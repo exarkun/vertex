@@ -1,9 +1,11 @@
-# Copyright 2005 Divmod, Inc.  See LICENSE file for details
+# Copyright (c) Twisted Matrix Laboratories.
+# See LICENSE for details.
+
 """
 Tests for Vertex's identity layer.
 """
 
-from twisted.trial import unittest
+from twisted.trial.unittest import SynchronousTestCase
 
 from twisted.internet.defer import succeed
 from twisted.internet.ssl import DN, KeyPair, CertificateRequest
@@ -15,23 +17,27 @@ from twisted.test.test_amp import (OKCert, PretendRemoteCertificateAuthority,
 from vertex.ivertex import IQ2QUser
 from vertex.q2q import Q2Q, Q2QAddress, Identify, Sign
 
-def makeCert(cn):
+
+
+def makeCert(commonName):
     """
     Create a self-signed cert.
     """
-    sharedDN = DN(CN=cn)
+    sharedDN = DN(CN=commonName)
     key = KeyPair.generate()
     cr = key.certificateRequest(sharedDN)
     sscrd = key.signCertificateRequest(sharedDN, cr, lambda dn: True, 1)
     return key.newCertificate(sscrd)
 
 
-def makeCertRequest(cn):
+
+def makeCertRequest(commonName):
     """
     Create a certificate request.
     """
     key = KeyPair.generate()
-    return key.certificateRequest(DN(CN=cn))
+    return key.certificateRequest(DN(CN=commonName))
+
 
 
 def callResponder(command, args, responder):
@@ -44,7 +50,8 @@ def callResponder(command, args, responder):
     return d.addCallback(amp._stringsToObjects, command.response, None)
 
 
-class IdentityTests(unittest.TestCase):
+
+class IdentityTests(SynchronousTestCase):
     """
     Tests for basic responses to identity-layer messages.
     """
@@ -87,6 +94,7 @@ class IdentityTests(unittest.TestCase):
                                  'password': 'hunter2'},
                           q)
         self.failureResultOf(d, amp.RemoteAmpError)
+
 
     def test_sign(self):
         """
@@ -137,6 +145,7 @@ class IdentityTests(unittest.TestCase):
         self.assertEqual(response['certificate'].getIssuer().commonName,
                          issuerName)
 
+
     def test_handshake(self):
         """
         Verify that starting TLS and succeeding at handshaking sends all the
@@ -154,13 +163,14 @@ class IdentityTests(unittest.TestCase):
             tls_verifyAuthorities=[PretendRemoteCertificateAuthority()])
 
         # let's buffer something to be delivered securely
-        L = []
-        cli.callRemote(SecuredPing).addCallback(L.append)
+        pinging = cli.callRemote(SecuredPing)
         p.flush()
+        self.successResultOf(pinging)
+
         # once for client once for server
         self.assertEqual(okc.verifyCount, 2)
-        L = []
-        cli.callRemote(SecuredPing).addCallback(L.append)
-        p.flush()
-        self.assertEqual(L[0], {'pinged': True})
 
+        pinging = cli.callRemote(SecuredPing)
+        p.flush()
+        pong = self.successResultOf(pinging)
+        self.assertEqual({'pinged': True}, pong)
